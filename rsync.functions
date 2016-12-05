@@ -1,0 +1,136 @@
+# This file is part of libertine linux's package rsync. It is subject to the license terms in the COPYRIGHT file found in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux-packages/rsync/master/COPYRIGHT. No part of libertine linux's package rsync, including this file, may be copied, modified, propagated, or distributed except according to the terms contained in the COPYRIGHT file.
+# Copyright © 2016 The developers of libertine linux's package rsync. See the COPYRIGHT file in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux-packages/rsync/master/COPYRIGHT.
+
+
+variant=upstream
+
+depends build_ccache
+build_needs ccache
+
+depends build_gnumake
+build_needs make
+
+depends build_slibtool
+build_needs clibtool-static libtoolize realpath
+
+depends build_perl
+build_needs perl
+
+depends build_autoconf
+build_needs autoconf autoheader autom4te autoreconf autoscan autoupdate ifnames
+
+depends build_automake
+build_needs automake aclocal
+
+depends build_gnum4
+build_needs m4
+
+depends build_busybox
+build_needs expr install sort ls sleep dirname touch sh
+
+case "$package" in
+	
+	build_rsync)
+		
+		build_provides rsync
+		
+		depends build_musl_cross_make_build
+		build_needs "$libertine_build"-cc "$libertine_build"-gcc "$libertine_build"-ar "$libertine_build"-ld "$libertine_build"-ranlib
+		
+		libertine_compile_build_rsync()
+		{
+			_libertine_compile_rsync false
+		}
+	;;
+	
+	rsync)
+
+		depends acl attr
+	
+		depends build_musl_cross_make_host
+		build_needs "$libertine_host"-cc "$libertine_host"-gcc "$libertine_host"-ar "$libertine_host"-ld "$libertine_host"-ranlib "$libertine_host"-strip
+		
+		libertine_compile_rsync()
+		{
+			_libertine_compile_rsync true
+		}
+	;;
+	
+esac
+
+
+build_needs cat sed
+_libertine_compile_rsync()
+{
+	local isForProduction="$1"
+	
+	pushd "$(libertine_public_sourcePath)"
+				
+		perl support/git-set-file-times
+		
+		libertine_public_autoconf_replaceWithKnownVersionOfConfigSub ./
+		libertine_public_autoconf_replaceWithKnownVersionOfConfigGuess ./
+		libertine_public_autoconf_replaceWithKnownVersionOfInstallSh ./
+		
+		set -- --disable-debug \
+			--with-included-popt \
+			--with-included-zlib \
+			--with-protected-args \
+			--with-rsync-path=/usr/bin/rsync \
+			--with-nobody-group=nobody \
+			--disable-locale
+		
+		local autoconfConfigureFunction
+		local destDir
+		if $isForProduction; then
+			autoconfConfigureFunction=libertine_public_autoconf_modernAutoconfConfigure
+			destDir="$(libertine_public_outputHostSysrootPath)"
+			libertine_public_populateInputSysroot acl attr
+			set -- "$@" \
+				--with-rsyncd-conf=/etc/rsyncd.confg \
+				--with-rsh=/usr/bin/ssh \
+				--enable-acl-support \
+				--enable-xattr-support
+		else
+			autoconfConfigureFunction=libertine_public_autoconf_modernAutoconfConfigureForBuild
+			destDir="$(libertine_public_outputBuildSysrootPath)"
+			set -- "$@" \
+				--with-rsyncd-conf="$(libertine_public_outputBuildSysrootPath)"/etc/rsyncd.confg \
+				--with-rsh=ssh
+		fi
+		
+		libertine_public_autoconf_adjustConfigureAcToRemoveGnuTextCruftBeforeAutoconf
+		autoreconf --install --force --verbose
+		
+		libertine_public_addOrReplaceBinaryInPathWithSwallow fakeroot
+		
+		$autoconfConfigureFunction "$@"
+				
+		libertine_public_autoconf_removePoToRemoveGnuTextCruftBeforeMake
+		
+		libertine_public_make reconfigure
+		
+		cat >>config.h <<-EOF
+			#define HAVE_STRUCT_UTIMBUF 1
+			#define HAVE_C99_VSNPRINTF 1
+			#define HAVE_GETTIMEOFDAY_TZ 1
+			#define HAVE_SOCKETPAIR 1
+			#define HAVE_VA_COPY 1
+			#define HAVE_SECURE_MKSTEMP 1
+			#define INET6 1
+			#define MKNOD_CREATES_FIFOS 1
+			#define MKNOD_CREATES_SOCKETS 1
+		EOF
+		
+		sed -i -e 's;prefix=/usr/local;prefix=/usr;g' -e 's;shell=/bin/sh;'"$(libertine_public_PATH)"/sh';g' Makefile
+		
+		libertine_public_make
+		
+		libertine_public_make DESTDIR="$destDir" install-all
+		
+	popd
+	
+	if $isForProduction; then
+		libertine_public_installAndStripBinariesIn bin rsync
+	fi
+}
