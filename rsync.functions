@@ -65,7 +65,8 @@ _libertine_compile_rsync()
 	local isForProduction="$1"
 	
 	pushd "$(libertine_public_sourcePath)"
-				
+		
+		libertine_public_addOrReplaceBinaryInPathWithSwallow git
 		perl support/git-set-file-times
 		
 		libertine_public_autoconf_replaceWithKnownVersionOfConfigSub ./
@@ -122,7 +123,7 @@ _libertine_compile_rsync()
 			#define MKNOD_CREATES_SOCKETS 1
 		EOF
 		
-		sed -i -e 's;prefix=/usr/local;prefix=/usr;g' -e 's;shell=/bin/sh;'"$(libertine_public_PATH)"/sh';g' Makefile
+		sed -i -e 's;prefix=/usr/local;prefix=/usr;g' -e 's;shell=/bin/sh;'"$(libertine_public_buildNeedsPath)"/sh';g' Makefile
 		
 		libertine_public_make
 		
